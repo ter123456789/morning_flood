@@ -3,14 +3,19 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'config/env.dart';
+import 'data/asset_waterway_repository.dart';
 import 'data/geolocator_location_service.dart';
+import 'data/open_meteo_wind_repository.dart';
 import 'data/supabase_flood_report_repository.dart';
 import 'data/thaiwater_flood_repository.dart';
 import 'domain/flood_report_repository.dart';
 import 'domain/flood_repository.dart';
 import 'domain/location_service.dart';
+import 'domain/waterway_repository.dart';
+import 'domain/wind_repository.dart';
 import 'presentation/bloc/flood_map_cubit.dart';
 import 'presentation/bloc/flood_report_cubit.dart';
+import 'presentation/bloc/map_layers_cubit.dart';
 import 'presentation/flood_map_page.dart';
 
 Future<void> main() async {
@@ -29,6 +34,8 @@ Future<void> main() async {
       repository: ThaiWaterFloodRepository(),
       reportRepository: SupabaseFloodReportRepository(Supabase.instance.client),
       locationService: GeolocatorLocationService(),
+      waterwayRepository: AssetWaterwayRepository(),
+      windRepository: OpenMeteoWindRepository(),
     ),
   );
 }
@@ -39,11 +46,15 @@ class FloodApp extends StatelessWidget {
     required this.repository,
     required this.reportRepository,
     required this.locationService,
+    required this.waterwayRepository,
+    required this.windRepository,
   });
 
   final FloodRepository repository;
   final FloodReportRepository reportRepository;
   final LocationService locationService;
+  final WaterwayRepository waterwayRepository;
+  final WindRepository windRepository;
 
   @override
   Widget build(BuildContext context) {
@@ -54,6 +65,8 @@ class FloodApp extends StatelessWidget {
           value: reportRepository,
         ),
         RepositoryProvider<LocationService>.value(value: locationService),
+        RepositoryProvider<WaterwayRepository>.value(value: waterwayRepository),
+        RepositoryProvider<WindRepository>.value(value: windRepository),
       ],
       child: MultiBlocProvider(
         providers: [
@@ -67,6 +80,13 @@ class FloodApp extends StatelessWidget {
             create: (context) =>
                 FloodReportCubit(context.read<FloodReportRepository>())
                   ..start(),
+          ),
+          BlocProvider(
+            create: (context) => MapLayersCubit(
+              context.read<WaterwayRepository>(),
+              context.read<WindRepository>(),
+              context.read<LocationService>(),
+            )..loadWaterways(),
           ),
         ],
         child: MaterialApp(

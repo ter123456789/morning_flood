@@ -4,7 +4,12 @@ import 'package:worning_foold/domain/flood_report.dart';
 import 'package:worning_foold/domain/flood_report_repository.dart';
 import 'package:worning_foold/domain/flood_repository.dart';
 import 'package:worning_foold/domain/flood_station.dart';
+import 'package:worning_foold/domain/geo_point.dart';
 import 'package:worning_foold/domain/location_service.dart';
+import 'package:worning_foold/domain/waterway.dart';
+import 'package:worning_foold/domain/waterway_repository.dart';
+import 'package:worning_foold/domain/wind_repository.dart';
+import 'package:worning_foold/domain/wind_sample.dart';
 
 class FakeFloodRepository implements FloodRepository {
   @override
@@ -28,6 +33,29 @@ class FakeFloodReportRepository implements FloodReportRepository {
   Future<void> submit(NewFloodReport report) async {
     if (submitError case final e?) throw e;
     submitted.add(report);
+  }
+}
+
+class FakeWaterwayRepository implements WaterwayRepository {
+  @override
+  Future<List<Waterway>> getWaterways() async => const [];
+}
+
+class FakeWindRepository implements WindRepository {
+  final requests = <List<GeoPoint>>[];
+
+  @override
+  Future<List<WindSample>> getCurrentWind(List<GeoPoint> points) async {
+    requests.add(points);
+    return [
+      for (final p in points)
+        WindSample(
+          latitude: p.latitude,
+          longitude: p.longitude,
+          speedKmh: 10,
+          directionDegrees: 90,
+        ),
+    ];
   }
 }
 

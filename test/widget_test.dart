@@ -12,6 +12,8 @@ void main() {
         repository: FakeFloodRepository(),
         reportRepository: FakeFloodReportRepository(),
         locationService: FakeLocationService(),
+        waterwayRepository: FakeWaterwayRepository(),
+        windRepository: FakeWindRepository(),
       ),
     );
     await tester.pump();

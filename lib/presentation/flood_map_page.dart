@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -11,7 +13,11 @@ import 'bloc/flood_map_cubit.dart';
 import 'bloc/flood_map_state.dart';
 import 'bloc/flood_report_cubit.dart';
 import 'bloc/flood_report_state.dart';
+import 'bloc/map_layers_cubit.dart';
+import 'bloc/map_layers_state.dart';
 import 'report_form_sheet.dart';
+import 'wind_overlay.dart';
+import 'wind_particle_layer.dart';
 
 class FloodMapPage extends StatelessWidget {
   const FloodMapPage({super.key});
@@ -57,6 +63,8 @@ class FloodMapPage extends StatelessWidget {
                   onRetry: () => context.read<FloodMapCubit>().load(),
                 ),
               const _ReportErrorBanner(),
+              const Positioned(top: 8, left: 8, child: _LayersButton()),
+              const Positioned(top: 64, left: 8, child: _WindLegendSlot()),
               const Positioned(left: 8, bottom: 32, child: _Legend()),
             ],
           );
@@ -94,11 +102,24 @@ class _FloodMapState extends State<_FloodMap> {
   final _controller = MapController();
   var _ready = false;
   var _pendingFit = false;
+  Timer? _windDebounce;
 
   @override
   void dispose() {
+    _windDebounce?.cancel();
     _controller.dispose();
     super.dispose();
+  }
+
+  void _loadWind() {
+    if (!_ready) return;
+    final b = _controller.camera.visibleBounds;
+    context.read<MapLayersCubit>().loadWind((
+      south: b.south,
+      west: b.west,
+      north: b.north,
+      east: b.east,
+    ));
   }
 
   // The map is built before data arrives, so a fit requested before
@@ -124,13 +145,30 @@ class _FloodMapState extends State<_FloodMap> {
   @override
   Widget build(BuildContext context) {
     final stations = widget.stations;
-    return BlocListener<FloodMapCubit, FloodMapState>(
-      listenWhen: (prev, curr) =>
-          curr is FloodMapLoaded &&
-          (prev is! FloodMapLoaded || prev.province != curr.province),
-      // Wait a frame so widget.stations reflects the new state.
-      listener: (_, _) =>
-          WidgetsBinding.instance.addPostFrameCallback((_) => _fitToStations()),
+    return MultiBlocListener(
+      listeners: [
+        BlocListener<FloodMapCubit, FloodMapState>(
+          listenWhen: (prev, curr) =>
+              curr is FloodMapLoaded &&
+              (prev is! FloodMapLoaded || prev.province != curr.province),
+          // Wait a frame so widget.stations reflects the new state.
+          listener: (_, _) => WidgetsBinding.instance.addPostFrameCallback(
+            (_) => _fitToStations(),
+          ),
+        ),
+        BlocListener<MapLayersCubit, MapLayersState>(
+          listenWhen: (prev, curr) => !prev.showWind && curr.showWind,
+          listener: (_, _) => _loadWind(),
+        ),
+        BlocListener<MapLayersCubit, MapLayersState>(
+          listenWhen: (prev, curr) =>
+              curr.errorMessage != null &&
+              prev.errorMessage != curr.errorMessage,
+          listener: (context, state) => ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(state.errorMessage!))),
+        ),
+      ],
       child: _buildMap(context, stations),
     );
   }
@@ -148,6 +186,11 @@ class _FloodMapState extends State<_FloodMap> {
             _fitToStations();
           }
         },
+        // Refetch wind once the camera settles rather than on every frame.
+        onPositionChanged: (_, _) {
+          _windDebounce?.cancel();
+          _windDebounce = Timer(const Duration(milliseconds: 600), _loadWind);
+        },
         onLongPress: (_, point) => showReportFormSheet(
           context,
           latitude: point.latitude,
@@ -158,7 +201,12 @@ class _FloodMapState extends State<_FloodMap> {
         TileLayer(
           urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
           userAgentPackageName: 'com.example.worning_foold',
+          tileBuilder: context.select((MapLayersCubit c) => c.state.showWind)
+              ? windTintTileBuilder
+              : null,
         ),
+        const _WaterwayLayer(),
+        const _WindLayer(),
         MarkerClusterLayerWidget(
           options: MarkerClusterLayerOptions(
             maxClusterRadius: 60,
@@ -192,6 +240,7 @@ class _FloodMapState extends State<_FloodMap> {
           attributions: [
             TextSourceAttribution('© OpenStreetMap contributors'),
             TextSourceAttribution('ข้อมูลระดับน้ำ: สสน. (ThaiWater)'),
+            TextSourceAttribution('Weather data by Open-Meteo.com'),
           ],
         ),
       ],
@@ -229,6 +278,82 @@ class _FloodMapState extends State<_FloodMap> {
             Text('วัดเมื่อ $time'),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _WaterwayLayer extends StatelessWidget {
+  const _WaterwayLayer();
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.watch<MapLayersCubit>().state;
+    if (!state.showWaterways) return const SizedBox.shrink();
+    return PolylineLayer(
+      polylines: [
+        for (final w in state.waterways)
+          for (final line in w.lines)
+            Polyline(
+              points: [for (final p in line) LatLng(p.latitude, p.longitude)],
+              color: Colors.blue.shade600,
+              strokeWidth: 2.5,
+            ),
+      ],
+    );
+  }
+}
+
+class _WindLayer extends StatelessWidget {
+  const _WindLayer();
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.watch<MapLayersCubit>().state;
+    if (!state.showWind) return const SizedBox.shrink();
+    return Stack(
+      children: [
+        WindParticleLayer(samples: state.wind),
+        WindHereMarkerLayer(position: state.myPosition, samples: state.wind),
+      ],
+    );
+  }
+}
+
+class _WindLegendSlot extends StatelessWidget {
+  const _WindLegendSlot();
+
+  @override
+  Widget build(BuildContext context) {
+    final show = context.select((MapLayersCubit c) => c.state.showWind);
+    return show ? const WindLegend() : const SizedBox.shrink();
+  }
+}
+
+class _LayersButton extends StatelessWidget {
+  const _LayersButton();
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.watch<MapLayersCubit>().state;
+    final cubit = context.read<MapLayersCubit>();
+    return Card(
+      child: PopupMenuButton<VoidCallback>(
+        tooltip: 'ชั้นข้อมูล',
+        icon: const Icon(Icons.layers),
+        onSelected: (toggle) => toggle(),
+        itemBuilder: (_) => [
+          CheckedPopupMenuItem(
+            value: cubit.toggleWaterways,
+            checked: state.showWaterways,
+            child: const Text('เส้นทางน้ำ'),
+          ),
+          CheckedPopupMenuItem(
+            value: cubit.toggleWind,
+            checked: state.showWind,
+            child: const Text('ลม'),
+          ),
+        ],
       ),
     );
   }
