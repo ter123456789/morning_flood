@@ -17,7 +17,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('เฝ้าระวังน้ำท่วม'), findsOneWidget);
-    expect(find.text('เสี่ยงสูง'), findsOneWidget);
+    expect(find.text('ล้นตลิ่ง'), findsOneWidget);
     expect(find.text('รายงานทั้งหมด'), findsOneWidget);
     expect(find.text('แจ้งที่ตำแหน่งฉัน'), findsOneWidget);
   });

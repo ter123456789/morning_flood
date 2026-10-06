@@ -4,8 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'config/env.dart';
 import 'data/geolocator_location_service.dart';
-import 'data/open_meteo_flood_repository.dart';
 import 'data/supabase_flood_report_repository.dart';
+import 'data/thaiwater_flood_repository.dart';
 import 'domain/flood_report_repository.dart';
 import 'domain/flood_repository.dart';
 import 'domain/location_service.dart';
@@ -26,7 +26,7 @@ Future<void> main() async {
   );
   runApp(
     FloodApp(
-      repository: OpenMeteoFloodRepository(),
+      repository: ThaiWaterFloodRepository(),
       reportRepository: SupabaseFloodReportRepository(Supabase.instance.client),
       locationService: GeolocatorLocationService(),
     ),
@@ -58,8 +58,10 @@ class FloodApp extends StatelessWidget {
       child: MultiBlocProvider(
         providers: [
           BlocProvider(
-            create: (context) =>
-                FloodMapCubit(context.read<FloodRepository>())..load(),
+            create: (context) => FloodMapCubit(
+              context.read<FloodRepository>(),
+              context.read<LocationService>(),
+            )..load(),
           ),
           BlocProvider(
             create: (context) =>

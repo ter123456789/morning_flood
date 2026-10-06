@@ -36,10 +36,11 @@ dependencies:
   cupertino_icons: ^1.0.8
   flutter_bloc: ^9.1.1
   flutter_map: ^8.3.2
-  latlong2: ^0.10.1
+  latlong2: ^0.9.1
   http: ^1.6.0
   supabase_flutter: ^2.18.0
   geolocator: ^14.1.1
+  flutter_map_marker_cluster: ^8.2.2
 
 dev_dependencies:
   flutter_test:
